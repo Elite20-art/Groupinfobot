@@ -577,4 +577,5 @@ def usercredits_command(update: Update, context: CallbackContext):
         uname = target[1:]
         conn = sqlite3.connect(DATABASE)
         cur = conn.cursor()
-        cur.execute("SELECT user_id, credits FROM users WHERE username=?", (u
+        cur.execute("SELECT user_id, credits FROM users WHERE username=?", (u,))
+
