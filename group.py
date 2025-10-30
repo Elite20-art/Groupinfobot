@@ -1,204 +1,153 @@
 import os
-import logging
+import telebot
+from telebot import types
 import sqlite3
-import requests
-import time
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ParseMode
-)
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    Filters,
-    CallbackContext
-)
+from datetime import datetime
 
-# ====== CONFIG ======
+# 🔹 Bot token from environment (Render se lega)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# 🔹 Channel username (join check ke liye)
 CHANNEL_USERNAME = "@Royalofficial143"
-ADMIN_USERNAME = "Rocky_2oo"
-COST_PER_SEARCH = 5
-CREDIT_PER_REF = 10
-DATABASE = "grupinf.db"
-# ====================
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 🔹 Create bot instance
+bot = telebot.TeleBot(BOT_TOKEN)
 
-# ===== Database Setup =====
+# 🔹 Database setup
 def init_db():
-    conn = sqlite3.connect(DATABASE)
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        chat_id INTEGER PRIMARY KEY,
-        username TEXT,
-        name TEXT,
-        credits INTEGER DEFAULT 10,
-        referred_by INTEGER,
-        created_at INTEGER
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        credits INTEGER DEFAULT 10
     )""")
     conn.commit()
     conn.close()
 
-def get_user(chat_id):
-    conn = sqlite3.connect(DATABASE)
-    cur = conn.cursor()
-    cur.execute("SELECT chat_id, username, name, credits, referred_by FROM users WHERE chat_id=?", (chat_id,))
-    row = cur.fetchone()
-    conn.close()
-    if row:
-        return {"chat_id": row[0], "username": row[1], "name": row[2], "credits": row[3], "referred_by": row[4]}
-    return None
+init_db()
 
-def create_user(chat_id, username, name, ref=None):
-    user = get_user(chat_id)
-    if user:
-        return user
-    conn = sqlite3.connect(DATABASE)
-    cur = conn.cursor()
-    cur.execute("INSERT INTO users VALUES (?,?,?,?,?,?)", (chat_id, username, name, 10, ref, int(time.time())))
-    conn.commit()
-    conn.close()
-    if ref:
-        add_credits(ref, CREDIT_PER_REF)
-    return get_user(chat_id)
 
-def add_credits(chat_id, amount):
-    conn = sqlite3.connect(DATABASE)
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET credits = credits + ? WHERE chat_id=?", (amount, chat_id))
+# 🔹 Helper function: Get or create user
+def get_user(user_id):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+    data = c.fetchone()
+    if not data:
+        c.execute("INSERT INTO users (user_id, credits) VALUES (?, 10)", (user_id,))
+        conn.commit()
+        conn.close()
+        return (user_id, 10)
+    conn.close()
+    return data
+
+
+# 🔹 Update credits
+def update_credits(user_id, amount):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET credits = credits + ? WHERE user_id=?", (amount, user_id))
     conn.commit()
     conn.close()
 
-def deduct_credits(chat_id, amount):
-    user = get_user(chat_id)
-    if not user or user["credits"] < amount:
-        return False
-    conn = sqlite3.connect(DATABASE)
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET credits = credits - ? WHERE chat_id=?", (amount, chat_id))
-    conn.commit()
-    conn.close()
-    return True
 
-# ===== Bot Logic =====
-def is_joined_channel(bot, user_id):
+# 🔹 Channel join check
+def is_user_joined(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
         return member.status in ["member", "administrator", "creator"]
-    except:
+    except Exception:
         return False
 
-def start(update: Update, context: CallbackContext):
-    chat = update.effective_chat
-    user = update.effective_user
-    args = context.args
-    ref = None
 
-    if args:
-        try:
-            if args[0].startswith("ref"):
-                ref = int(args[0][3:])
-        except:
-            pass
-
-    user_rec = create_user(chat.id, user.username or "", user.full_name or "", ref)
-
-    if not is_joined_channel(context.bot, chat.id):
-        join_button = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Join Channel ✅", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")]]
-        )
-        update.message.reply_text(
-            f"⚠️ Please join our channel {CHANNEL_USERNAME} first to use the bot.",
-            reply_markup=join_button,
-        )
-        return
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Search Group Info", callback_data="search")],
-        [InlineKeyboardButton("💰 My Credits", callback_data="credits")],
-        [InlineKeyboardButton("🎁 Referral Link", callback_data="referral")]
-    ])
-
-    update.message.reply_text(
-        f"👋 Hello {user.first_name}!\nWelcome to GrupInf Bot.\n\nUse the menu below:",
-        reply_markup=keyboard
+# 🔹 Start command
+@bot.message_handler(commands=["start"])
+def start(message):
+    user = get_user(message.from_user.id)
+    keyboard = types.InlineKeyboardMarkup()
+    join_btn = types.InlineKeyboardButton("✅ Join Channel", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")
+    verify_btn = types.InlineKeyboardButton("🔍 Verify Join", callback_data="verify_join")
+    keyboard.add(join_btn)
+    keyboard.add(verify_btn)
+    bot.reply_to(
+        message,
+        f"👋 Hello {message.from_user.first_name}!\n\n"
+        "Before using the bot, please join our channel 👇",
+        reply_markup=keyboard,
     )
 
-def button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    user = query.from_user
-    chat_id = query.message.chat.id
-    query.answer()
 
-    if not is_joined_channel(context.bot, chat_id):
-        query.message.reply_text("⚠️ Join our channel first: " + CHANNEL_USERNAME)
-        return
-
-    if query.data == "search":
-        query.message.reply_text("🔎 Send group @username or invite link to get info (costs 5 credits).")
-        context.user_data["waiting_for_search"] = True
-
-    elif query.data == "credits":
-        user_data = get_user(chat_id)
-        query.message.reply_text(f"💳 Your Credits: {user_data['credits']}")
-
-    elif query.data == "referral":
-        ref_link = f"https://t.me/{context.bot.username}?start=ref{chat_id}"
-        query.message.reply_text(
-            f"🎁 Share your referral link:\n{ref_link}\n\nEach new user gives you {CREDIT_PER_REF} credits!"
+# 🔹 Verify join
+@bot.callback_query_handler(func=lambda call: call.data == "verify_join")
+def verify_join(call):
+    user_id = call.from_user.id
+    if is_user_joined(user_id):
+        bot.answer_callback_query(call.id, "✅ Verified! You can now use the bot.")
+        bot.send_message(
+            user_id,
+            "🎉 Verification successful!\nYou can now use the bot.\n\nUse /search <group_name> to search group info.",
         )
+    else:
+        bot.answer_callback_query(call.id, "❌ You must join the channel first!", show_alert=True)
 
-def handle_text(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    text = update.message.text.strip()
 
-    if context.user_data.get("waiting_for_search"):
-        user = get_user(chat_id)
-        if not deduct_credits(chat_id, COST_PER_SEARCH):
-            update.message.reply_text("❌ Not enough credits! Contact admin for more.")
-            return
+# 🔹 Search command
+@bot.message_handler(commands=["search"])
+def search_group(message):
+    user_id = message.from_user.id
+    user = get_user(user_id)
 
-        update.message.reply_text(f"🔍 Searching info for: {text}\nPlease wait...")
-        time.sleep(2)
-
-        # Dummy result (you can later replace this with real logic)
-        result = f"📊 Group Info for {text}\n• Owner: Unknown\n• Admins: 3\n• Created: Unknown"
-        update.message.reply_text(result)
-
-        context.user_data["waiting_for_search"] = False
-
-def addcredit(update: Update, context: CallbackContext):
-    user = update.effective_user
-    if user.username != ADMIN_USERNAME:
-        update.message.reply_text("❌ Only admin can use this command.")
+    # Check join
+    if not is_user_joined(user_id):
+        bot.reply_to(message, "⚠️ Please join the channel first using /start.")
         return
+
+    # Check credits
+    if user[1] < 5:
+        bot.reply_to(message, "💰 You don’t have enough credits (need 5 per search). Contact admin to buy more.")
+        return
+
+    # Extract search term
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        bot.reply_to(message, "❗ Usage: /search <group_name>")
+        return
+
+    group_name = parts[1]
+    update_credits(user_id, -5)
+    bot.reply_to(
+        message,
+        f"🔎 Searching for group info related to: {group_name}\n"
+        "⏳ Please wait...\n(This is demo mode — add your logic here)",
+    )
+
+    # 🔹 Here you can add your Telethon or API logic to get group info
+    bot.send_message(
+        user_id,
+        f"✅ Demo result for: {group_name}\n"
+        f"👑 Owner: @Rocky_2oo\n"
+        f"📅 Created: {datetime.now().strftime('%Y-%m-%d')}\n"
+        f"💰 5 credits used. Remaining: {user[1] - 5}",
+    )
+
+
+# 🔹 Admin add credits
+@bot.message_handler(commands=["addcredits"])
+def add_credits(message):
+    if message.from_user.username != "Rocky_2oo":  # Only admin can add credits
+        bot.reply_to(message, "⛔ You are not authorized to use this command.")
+        return
+
     try:
-        target = int(context.args[0])
-        amount = int(context.args[1])
-        add_credits(target, amount)
-        update.message.reply_text(f"✅ Added {amount} credits to {target}.")
+        parts = message.text.split()
+        user_id = int(parts[1])
+        amount = int(parts[2])
+        update_credits(user_id, amount)
+        bot.reply_to(message, f"✅ Added {amount} credits to {user_id}")
     except:
-        update.message.reply_text("Usage: /addcredit <chat_id> <amount>")
+        bot.reply_to(message, "❗ Usage: /addcredits <user_id> <amount>")
 
-def main():
-    init_db()
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("addcredit", addcredit))
-    dp.add_handler(CallbackQueryHandler(button))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_text))
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
+# 🔹 Run bot
+print("🤖 Bot is running...")
+bot.infinity_polling()
