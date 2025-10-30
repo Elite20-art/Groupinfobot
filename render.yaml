@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: grupinf-bot
+    env: python
+    startCommand: python bot.py
