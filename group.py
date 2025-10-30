@@ -28,7 +28,7 @@ from datetime import datetime
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import ChannelParticipantsAdmins, Channel
-from telethon.errors import RpcError
+from telethon.errors.rpcerrorlist import RpcError
 
 from telegram import (
     InlineKeyboardButton,
@@ -578,4 +578,5 @@ def usercredits_command(update: Update, context: CallbackContext):
         conn = sqlite3.connect(DATABASE)
         cur = conn.cursor()
         cur.execute("SELECT user_id, credits FROM users WHERE username=?", (u,))
+
 
