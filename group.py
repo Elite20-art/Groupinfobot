@@ -17,18 +17,16 @@ Requirements (requirements.txt):
   telethon==1.30.0
 """
 
-import os
-import logging
+import asyncio
 import sqlite3
-import time
-import csv
-from html import escape
+import logging
 from datetime import datetime
-
-from telethon import TelegramClient
-from telethon.sessions import StringSession
-from telethon.tl.types import ChannelParticipantsAdmins, Channel
-from telethon.errors import RPCError
+from telethon import TelegramClient, events
+from telethon.errors import RPCError, FloodWaitError, UserPrivacyRestrictedError
+from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.tl.types import ChannelParticipantsSearch
+from configparser import ConfigParser
+import os
 
 from telegram import (
     InlineKeyboardButton,
@@ -578,6 +576,7 @@ def usercredits_command(update: Update, context: CallbackContext):
         conn = sqlite3.connect(DATABASE)
         cur = conn.cursor()
         cur.execute("SELECT user_id, credits FROM users WHERE username=?", (u,))
+
 
 
 
