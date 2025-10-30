@@ -2,7 +2,8 @@ python-telegram-bot==13.15
 requests
 filetype
 telethon
-telethon==1.30.0
+telethon==1.29.2
+
 
 
 
