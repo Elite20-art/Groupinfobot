@@ -21,7 +21,8 @@ import asyncio
 import sqlite3
 import logging
 from datetime import datetime
-from telethon import TelegramClient, events
+from telethon import TelegramClient
+from telethon.sessions import StringSession, events
 from telethon.errors import RPCError, FloodWaitError, UserPrivacyRestrictedError
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import ChannelParticipantsSearch
@@ -576,6 +577,7 @@ def usercredits_command(update: Update, context: CallbackContext):
         conn = sqlite3.connect(DATABASE)
         cur = conn.cursor()
         cur.execute("SELECT user_id, credits FROM users WHERE username=?", (u,))
+
 
 
 
