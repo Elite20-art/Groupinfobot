@@ -28,7 +28,7 @@ from datetime import datetime
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import ChannelParticipantsAdmins, Channel
-from telethon.errors import RpcError
+from telethon.errors.rpcerrorlist import RPCError
 
 from telegram import (
     InlineKeyboardButton,
@@ -657,4 +657,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
