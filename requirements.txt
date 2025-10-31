@@ -3,6 +3,8 @@ requests
 filetype
 telethon
 telethon==1.29.2
+imghdr-py==0.4
+
 
 
 
